@@ -6,6 +6,7 @@ use crate::{
     auth::AuthConfig,
     event::{ClientRequest, PlayerRequest},
     state::*,
+    utils,
 };
 
 use anyhow::Context as _;
@@ -1292,6 +1293,7 @@ impl Client {
         };
 
         if !new_track {
+            
             return Ok(());
         }
 
@@ -1305,11 +1307,12 @@ impl Client {
             None => return Ok(()),
         };
 
-        let path = state.configs.cache_folder.join("image").join(format!(
+        let path = state.configs.cache_folder.join("image").join(utils::sanitize_file_name(&format!(
             "{}-{}-cover.jpg",
             track.album.name,
             crate::utils::map_join(&track.album.artists, |a| &a.name, ", ")
-        ));
+        ),
+        state));
 
         // Retrieve and save the new track's cover image into the cache folder.
         // The notify feature still requires the cover images to be stored inside the cache folder.

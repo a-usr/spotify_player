@@ -74,4 +74,4 @@ sixel = ["image", "viuer/sixel"]
 notify = ["notify-rust"]
 daemon = ["daemonize"]
 
-default = ["rodio-backend", "media-control"]
+default = ["image", "media-control"]

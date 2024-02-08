@@ -13,11 +13,20 @@ fn update_control_metadata(
     state: &SharedState,
     controls: &mut MediaControls,
     prev_track_info: &mut String,
+    img_needs_refresh: &mut bool
 ) -> Result<(), souvlaki::Error> {
     let player = state.player.read();
 
     match player.current_playing_track() {
-        None => {}
+        None => {controls.set_metadata(MediaMetadata {
+            title: Some(""),
+            album: Some(""),
+            artist: Some(""),
+            duration: None,
+            cover_url: None,
+        })?;
+        *prev_track_info = "".to_string();
+    }
         Some(track) => {
             if let Some(ref playback) = player.playback {
                 let progress = player
@@ -30,20 +39,50 @@ fn update_control_metadata(
                     controls.set_playback(MediaPlayback::Paused { progress })?;
                 }
             }
-
+            
             // only update metadata when the track information is changed
+            let path_option: Option<&str>;
+            #[cfg(not(feature = "image"))]
+            let path_option: Option<&str> = None;
             let track_info = format!("{}/{}", track.name, track.album.name);
-            if track_info != *prev_track_info {
-                controls.set_metadata(MediaMetadata {
-                    title: Some(&track.name),
-                    album: Some(&track.album.name),
-                    artist: Some(&map_join(&track.artists, |a| &a.name, ", ")),
-                    duration: track.duration.to_std().ok(),
-                    cover_url: utils::get_track_album_image_url(track),
-                })?;
-
-                *prev_track_info = track_info;
+            if track_info == *prev_track_info && !*img_needs_refresh{
+                return Ok(());
             }
+            #[cfg(feature= "image")]
+            let path_string_lit: String;
+            #[cfg(feature= "image")]
+            {            
+                let path = utils::sanitize_file_name(state.configs.cache_folder.join("image").join(format!(
+                    "{}-{}-cover.jpg",
+                    track.album.name,
+                    crate::utils::map_join(&track.album.artists, |a| &a.name, ", ")
+                )).to_str().expect("Invalid Path I Guess"), state);
+                
+                #[cfg(target_os="windows")]
+                if cfg!(target_os="windows"){    
+                    path_string_lit = format!("file://{}", path).replace(".cache/spotify-player", ".cache\\spotify-player");
+                }
+                else{
+                    path_string_lit = format!("file://{}", path);
+                }
+                let path_string = &path_string_lit;
+                let data = state.data.read();
+            
+            //let url = crate::utils::get_track_album_image_url(track);
+                if data.caches.images.get(crate::utils::get_track_album_image_url(track).expect("ok..")).is_some() { path_option = Some(path_string); *img_needs_refresh = false; tracing::info!("Image is cached, using file {:?}", path_string);}
+                else{ path_option = None; tracing::warn!("Not using an image because Image is yet to be cached"); *img_needs_refresh = true}
+            }
+            
+            controls.set_metadata(MediaMetadata {
+                title: Some(&track.name),
+                album: Some(&track.album.name),
+                artist: Some(&map_join(&track.artists, |a| &a.name, ", ")),
+                duration: track.duration.to_std().ok(),
+                cover_url: path_option,
+            })?;
+
+            *prev_track_info = track_info;
+            
         }
     }
 
@@ -121,8 +160,9 @@ pub fn start_event_watcher(
     // [1]: https://github.com/Sinono3/souvlaki/blob/b4d47bb2797ffdd625c17192df640510466762e1/src/platform/linux/mod.rs#L450
     let refresh_duration = std::time::Duration::from_millis(1000);
     let mut track_info = String::new();
+    let mut img_need_display = false;
     loop {
-        update_control_metadata(&state, &mut controls, &mut track_info)?;
+        update_control_metadata(&state, &mut controls, &mut track_info, &mut img_need_display)?;
         std::thread::sleep(refresh_duration);
 
         // this must be run repeatedly to ensure that

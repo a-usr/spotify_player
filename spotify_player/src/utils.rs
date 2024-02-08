@@ -2,6 +2,8 @@ use std::borrow::Cow;
 
 use tui::widgets::*;
 
+use crate::state::SharedState;
+
 /// formats a time duration into a "{minutes}:{seconds}" format
 pub fn format_duration(duration: &chrono::Duration) -> String {
     let secs = duration.num_seconds();
@@ -52,4 +54,10 @@ pub fn parse_uri(uri: &str) -> Cow<str> {
     } else {
         Cow::Borrowed(uri)
     }
+}
+pub fn sanitize_file_name(uri: &str, state: &SharedState) -> String{
+    let filename = uri.replace(&state.configs.cache_folder.join("image").to_str().expect(""), "");
+    let sanitized_filename = filename.replace(&['?', ':', '*', '"', '<', '>', '|'][..], "");
+    uri.replace(&filename, &sanitized_filename)
+
 }
